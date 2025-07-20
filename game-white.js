@@ -338,7 +338,7 @@ class PanelGame {
                 <div class="victory-screen">
                     <!-- <div class="victory-text">You did it!</div>
                     <div class="victory-subtext">All panels have numbers!</div> -->
-                    <button onclick="window.open('https://x.com/intent/post?text=%23repair_from_zero+%E3%82%92%E3%82%AF%E3%83%AA%E3%82%A2%E3%81%97%E3%81%9F%EF%BC%81+%23%E3%82%AB%E3%82%BA%E3%83%AA%E3%83%83%E3%83%88%E5%AE%87%E5%AE%99%E8%AC%8E', '_blank')" class="reset-button">Xでシェア</button>
+                    <button onclick="window.open('https://x.com/intent/post?text=%23repair_from_zero+%E3%82%92%E3%82%AF%E3%83%AA%E3%82%A2%E3%81%97%E3%81%9F%EF%BC%81+%23%E3%82%AB%E3%82%BA%E3%83%AA%E3%83%83%E3%83%88%E5%AE%87%E5%AE%99%E8%AC%8E&url=https://kazushi0114.github.io/repair_from_zero/', '_blank')" class="reset-button">Xでシェア</button>
                 </div>
             `;
         }
