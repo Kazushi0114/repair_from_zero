@@ -3,6 +3,7 @@ class PanelGame {
         this.panels = [];
         this.touchedNumbers = {};
         this.neighbors = {
+            0: [7, 9],
             1: [4, 5],
             2: [3, 5, 6],
             3: [2, 5, 6],
@@ -10,9 +11,8 @@ class PanelGame {
             5: [1, 2, 3, 4, 6, 7, 8, 9],
             6: [2, 3, 5, 8],
             7: [0, 4, 5, 8],
-            8: [4, 5, 7, 9],
-            9: [0, 5, 8],
-            0: [7, 9]
+            8: [4, 5, 6, 7, 9],
+            9: [0, 5, 8]
         };
         this.init();
     }
@@ -67,10 +67,10 @@ class PanelGame {
 
     reset() {
         for (let i = 0; i <= 9; i++) {
-            // Set initial state: panels 0, 1, 8 are yellow, others are white
+            // Set initial state: panels 1, 5, 9 are white, others are yellow
             // But visually all appear white
-            const isYellow = (i === 0 || i === 1 || i === 8);
-            this.panels[i].className = `panel panel-${i} ${isYellow ? 'yellow' : 'white'}`;
+            const isWhite = (i === 1 || i === 5 || i === 9);
+            this.panels[i].className = `panel panel-${i} ${isWhite ? 'white' : 'yellow'}`;
             this.panels[i].textContent = '';
             // Only set style properties if in browser environment
             if (typeof window !== 'undefined') {
@@ -137,19 +137,23 @@ class PanelGame {
 
     addPressedEffect(panel) {
         panel.classList.add('pressed');
+        // Always show yellow color on tap regardless of state
+        panel.style.backgroundColor = '#FFD700';
     }
     
     removePressedEffect(panel) {
         panel.classList.remove('pressed');
+        // If game is won, show actual color; otherwise show white
+        if (this.isGameWon()) {
+            panel.style.backgroundColor = panel.classList.contains('yellow') ? '#FFD700' : 'white';
+        } else {
+            panel.style.backgroundColor = 'white';
+        }
     }
 
     touchPanel(panelNumber) {
-        // Check if game is already won
-        if (this.isGameWon()) {
-            return;
-        }
-        
         const yellowCount = this.countYellowPanels();
+        const wasGameWon = this.isGameWon();
         
         // Add pressed visual feedback for desktop clicks
         const panel = this.panels[panelNumber];
@@ -162,16 +166,39 @@ class PanelGame {
         
         this.togglePanel(panelNumber);
         
+        // Update tapped panel color if game is already won
+        if (wasGameWon) {
+            const tappedPanel = this.panels[panelNumber];
+            if (tappedPanel && tappedPanel.style) {
+                tappedPanel.style.backgroundColor = tappedPanel.classList.contains('yellow') ? '#FFD700' : 'white';
+            }
+        }
+        
         const neighbors = this.neighbors[panelNumber];
         neighbors.forEach(neighbor => {
             this.togglePanel(neighbor);
+            // Update neighbor panel color if game is already won
+            if (wasGameWon) {
+                const neighborPanel = this.panels[neighbor];
+                if (neighborPanel && neighborPanel.style) {
+                    neighborPanel.style.backgroundColor = neighborPanel.classList.contains('yellow') ? '#FFD700' : 'white';
+                }
+            }
         });
         
         this.displayNumber(panelNumber, yellowCount);
         
-        // Check win condition after move
-        if (this.checkWinCondition()) {
+        // Check win condition after move (only if game wasn't already won)
+        if (!wasGameWon && this.checkWinCondition()) {
             this.showVictory();
+        }
+        
+        // Show connection lines again if game was already won (restore on tap after victory)
+        if (wasGameWon) {
+            const svg = document.getElementById('connections');
+            if (svg && svg.style) {
+                svg.style.display = 'block';
+            }
         }
     }
 
@@ -311,10 +338,12 @@ class PanelGame {
             return;
         }
         
-        // Disable all panels (no opacity change)
+        // Keep panels enabled and show actual colors
         for (let i = 0; i <= 9; i++) {
             if (this.panels[i] && this.panels[i].style) {
-                this.panels[i].style.pointerEvents = 'none';
+                this.panels[i].style.pointerEvents = 'auto';
+                // Show actual color after victory
+                this.panels[i].style.backgroundColor = this.panels[i].classList.contains('yellow') ? '#FFD700' : 'white';
             }
         }
 
@@ -338,7 +367,7 @@ class PanelGame {
                 <div class="victory-screen">
                     <!-- <div class="victory-text">You did it!</div>
                     <div class="victory-subtext">All panels have numbers!</div> -->
-                    <button onclick="window.open('https://x.com/intent/post?text=%23repair_from_zero+%E3%82%92%E3%82%AF%E3%83%AA%E3%82%A2%E3%81%97%E3%81%9F%EF%BC%81+%23%E3%82%AB%E3%82%BA%E3%83%AA%E3%83%83%E3%83%88%E5%AE%87%E5%AE%99%E8%AC%8E&url=https://kazushi0114.github.io/repair_from_zero/', '_blank')" class="reset-button">Xでシェア</button>
+                    <button onclick="window.open('https://x.com/intent/post?text=%23repair_from_zero+%E3%82%92%E3%82%AF%E3%83%AA%E3%82%A2%E3%81%97%E3%81%9F%EF%BC%81+%23%E3%82%AB%E3%82%BA%E3%83%AA%E3%83%83%E3%83%88%E5%AE%87%E5%AE%99%E8%AC%8E', '_blank')" class="reset-button">Xでシェア</button>
                 </div>
             `;
         }
