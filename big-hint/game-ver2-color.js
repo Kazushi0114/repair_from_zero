@@ -2,6 +2,7 @@ class PanelGame {
     constructor() {
         this.panels = [];
         this.touchedNumbers = {};
+        this.wasEverWon = false;
         this.neighbors = {
             0: [7, 9],
             1: [4, 5],
@@ -23,11 +24,20 @@ class PanelGame {
         const svg = document.getElementById('connections');
         const panels = grid.querySelectorAll('.panel');
         panels.forEach(p => p.remove());
+        const buttons = grid.querySelectorAll('button');
+        buttons.forEach(b => b.remove());
         
         for (let i = 1; i <= 9; i++) {
             this.createPanel(i, grid);
         }
         this.createPanel(0, grid);
+        
+        // Create reset button
+        const resetBtn = document.createElement('button');
+        resetBtn.className = 'reset-btn';
+        resetBtn.onclick = () => this.reset();
+        resetBtn.textContent = '↩';
+        grid.appendChild(resetBtn);
         
         // Draw connections after DOM layout is complete
         requestAnimationFrame(() => {
@@ -66,11 +76,48 @@ class PanelGame {
     }
 
     reset() {
+        const wasGameWon = this.isGameWon();
+        
         for (let i = 0; i <= 9; i++) {
-            this.panels[i].className = `panel panel-${i} white`;
+            // Set initial state: only panel 8 is yellow, others are white
+            const isWhite = (i !== 8);
+            this.panels[i].className = `panel panel-${i} ${isWhite ? 'white' : 'yellow'}`;
             this.panels[i].textContent = '';
+            // Only set style properties if in browser environment
+            if (typeof window !== 'undefined') {
+                this.panels[i].style.pointerEvents = 'auto';
+                // Always show actual colors (no hiding)
+                this.panels[i].style.background = '';
+            }
         }
         this.touchedNumbers = {};
+
+        // Show connection lines again (browser only)
+        if (typeof document !== 'undefined') {
+            const svg = document.getElementById('connections');
+            if (svg && svg.style) {
+                svg.style.display = 'block';
+            }
+
+            // Restore title to "Repair From Zero - Color Visible" with broken style
+            const titleElement = document.querySelector('.game-title');
+            if (titleElement) {
+                titleElement.textContent = 'Repair From Zero';
+                titleElement.className = 'game-title';
+            }
+
+            // Keep share button if victory screen exists (game was won)
+            const victoryScreen = document.querySelector('.victory-screen');
+            const shareBtn = document.querySelector('.share-btn');
+            if (victoryScreen && !shareBtn) {
+                const grid = document.getElementById('panelGrid');
+                const newShareBtn = document.createElement('button');
+                newShareBtn.className = 'share-btn reset-button';
+                newShareBtn.onclick = () => window.open('https://x.com/intent/post?text=%23repair_from_zero+%E3%82%92%E3%82%AF%E3%83%AA%E3%82%A2%E3%81%97%E3%81%9F%EF%BC%81+%23%E3%82%AB%E3%82%BA%E3%83%AA%E3%83%83%E3%83%88%E5%AE%87%E5%AE%99%E8%AC%8E&url=https://kazushi0114.github.io/repair_from_zero/', '_blank');
+                newShareBtn.textContent = '𝕏';
+                grid.appendChild(newShareBtn);
+            }
+        }
     }
 
     randomize() {
@@ -106,10 +153,22 @@ class PanelGame {
 
     addPressedEffect(panel) {
         panel.classList.add('pressed');
+        // Store original background
+        panel.dataset.originalBg = panel.style.background || '';
+        // Always show yellow color on tap
+        panel.style.background = 'linear-gradient(135deg, #ffd700 0%, #ffb700 100%)';
     }
     
     removePressedEffect(panel) {
         panel.classList.remove('pressed');
+        // Restore original background (always show colors)
+        if (panel.dataset.originalBg !== undefined) {
+            panel.style.background = panel.dataset.originalBg;
+            delete panel.dataset.originalBg;
+        } else {
+            // Always show actual colors (no hiding)
+            panel.style.background = '';
+        }
     }
 
     touchPanel(panelNumber) {
@@ -131,6 +190,13 @@ class PanelGame {
         neighbors.forEach(neighbor => {
             this.togglePanel(neighbor);
         });
+        
+        // Always show actual colors for all panels
+        for (let i = 0; i <= 9; i++) {
+            if (!this.panels[i].classList.contains('pressed')) {
+                this.panels[i].style.background = '';
+            }
+        }
         
         this.displayNumber(panelNumber, yellowCount);
         
@@ -211,14 +277,26 @@ class PanelGame {
             0: { x: 1, y: 3 }
         };
         
-        const cellSize = 84;  // 80px + 2px border × 2
-        const gap = 10;
-        // The center of a panel is at half the cell size
-        // Each cell is positioned at column * (cellSize + gap)
+        // CSS grid settings
+        const gridColumnWidth = 70; // CSS grid-template-columns width
+        const gridGap = 15;          // CSS gap
+        
+        // Panel dimensions (including border due to content-box)
+        const panelWidth = 70;       // CSS width
+        const panelHeight = 50;      // CSS height
+        const borderWidth = 2;       // border width
+        
+        // Actual panel size with border
+        const actualPanelWidth = panelWidth + borderWidth * 2;  // 74px
+        const actualPanelHeight = panelHeight + borderWidth * 2; // 54px
+        
+        // Panel centers are based on grid positions, but panels overflow
+        const panelCenterX = positions[number].x * (gridColumnWidth + gridGap) + actualPanelWidth / 2;
+        const panelCenterY = positions[number].y * (actualPanelHeight + gridGap) + actualPanelHeight / 2;
         
         return {
-            x: positions[number].x * (cellSize + gap) + cellSize / 2,
-            y: positions[number].y * (cellSize + gap) + cellSize / 2
+            x: panelCenterX,
+            y: panelCenterY
         };
     }
 
@@ -226,28 +304,62 @@ class PanelGame {
         const svg = document.getElementById('connections');
         svg.innerHTML = '';
         
-        // Set SVG size to match grid
-        // Width: 3 panels * 84px + 2 gaps * 10px = 272px
-        // Height: 4 rows * 84px + 3 gaps * 10px = 366px
-        svg.setAttribute('viewBox', '0 0 272 366');
-        svg.style.width = '272px';
-        svg.style.height = '366px';
+        // Set SVG size to match actual panel layout
+        // Actual layout: panels overflow grid due to borders
+        // Width: 3 * (70px + 4px) + 2 * 15px = 252px
+        // Height: 4 * (50px + 4px) + 3 * 15px = 261px
+        const svgWidth = 3 * 74 + 2 * 15;  // 252px
+        const svgHeight = 4 * 54 + 3 * 15; // 261px
+        
+        svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+        svg.style.width = `${svgWidth}px`;
+        svg.style.height = `${svgHeight}px`;
         
         // Draw lines for each panel's connections
         for (let panel = 0; panel <= 9; panel++) {
-            const from = this.getPanelPosition(panel);
             const neighbors = this.neighbors[panel];
             
             neighbors.forEach(neighbor => {
                 // Only draw lines from lower to higher number to avoid duplicates
                 if (panel < neighbor) {
-                    const to = this.getPanelPosition(neighbor);
+                    const fromPos = this.getPanelPosition(panel);
+                    const toPos = this.getPanelPosition(neighbor);
+                    
+                    // Calculate if this is a diagonal connection
+                    const isDiagonal = Math.abs(fromPos.x - toPos.x) > 0 && Math.abs(fromPos.y - toPos.y) > 0;
+                    
+                    let x1 = fromPos.x;
+                    let y1 = fromPos.y;
+                    let x2 = toPos.x;
+                    let y2 = toPos.y;
+                    
+                    if (isDiagonal) {
+                        // For diagonal lines, adjust the endpoints based on ellipse shape
+                        // Panel is 70x50 with border-radius: 35% / 50% (ellipse)
+                        const dx = toPos.x - fromPos.x;
+                        const dy = toPos.y - fromPos.y;
+                        const angle = Math.atan2(dy, dx);
+                        
+                        // Ellipse radii (accounting for actual visual appearance)
+                        const rx = 35 * 0.35; // 35% of width (70px / 2)
+                        const ry = 25 * 0.50; // 50% of height (50px / 2)
+                        
+                        // Calculate intersection points with ellipse
+                        const t = Math.atan2(ry * Math.sin(angle), rx * Math.cos(angle));
+                        x1 += rx * Math.cos(t);
+                        y1 += ry * Math.sin(t);
+                        
+                        const reverseAngle = angle + Math.PI;
+                        const t2 = Math.atan2(ry * Math.sin(reverseAngle), rx * Math.cos(reverseAngle));
+                        x2 += rx * Math.cos(t2);
+                        y2 += ry * Math.sin(t2);
+                    }
                     
                     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                    line.setAttribute('x1', from.x);
-                    line.setAttribute('y1', from.y);
-                    line.setAttribute('x2', to.x);
-                    line.setAttribute('y2', to.y);
+                    line.setAttribute('x1', x1);
+                    line.setAttribute('y1', y1);
+                    line.setAttribute('x2', x2);
+                    line.setAttribute('y2', y2);
                     line.setAttribute('stroke', 'rgba(255, 255, 255, 0.3)');
                     line.setAttribute('stroke-width', '2');
                     
@@ -284,10 +396,15 @@ class PanelGame {
             return;
         }
         
-        // Keep panels enabled after victory
+        // Set flag to remember that game was won
+        this.wasEverWon = true;
+        
+        // Keep panels enabled and show actual colors (already visible)
         for (let i = 0; i <= 9; i++) {
             if (this.panels[i] && this.panels[i].style) {
                 this.panels[i].style.pointerEvents = 'auto';
+                // Colors are always visible, so no change needed
+                this.panels[i].style.background = '';
             }
         }
 
@@ -302,77 +419,41 @@ class PanelGame {
         if (titleElement) {
             titleElement.textContent = 'You did it!';
             titleElement.className = 'game-title victory-title';
+            // Add victory-screen class to enable isGameWon() detection
+            titleElement.classList.add('victory-screen');
         }
 
-        // Add share button to existing controls
-        const controlsDiv = document.querySelector('.controls');
-        if (controlsDiv) {
-            controlsDiv.innerHTML = `
-                <div class="victory-screen">
-                    <button onclick="game.reset()">リセット</button>
-                    <button onclick="window.open('https://x.com/intent/post?text=%23repair_from_zero+%E3%82%92%E3%82%AF%E3%83%AA%E3%82%A2%E3%81%97%E3%81%9F%EF%BC%81+%23%E3%82%AB%E3%82%BA%E3%83%AA%E3%83%83%E3%83%88%E5%AE%87%E5%AE%99%E8%AC%8E&url=https://kazushi0114.github.io/repair_from_zero/', '_blank')" class="reset-button">Xでシェア</button>
-                </div>
-            `;
-        }
+        // Add share button to grid
+        const grid = document.getElementById('panelGrid');
+        const shareBtn = document.createElement('button');
+        shareBtn.className = 'share-btn reset-button';
+        shareBtn.onclick = () => window.open('https://x.com/intent/post?text=%23repair_from_zero+%E3%82%92%E3%82%AF%E3%83%AA%E3%82%A2%E3%81%97%E3%81%9F%EF%BC%81+%23%E3%82%AB%E3%82%BA%E3%83%AA%E3%83%83%E3%83%88%E5%AE%87%E5%AE%99%E8%AC%8E&url=https://kazushi0114.github.io/repair_from_zero/', '_blank');
+        shareBtn.textContent = '𝕏';
+        grid.appendChild(shareBtn);
     }
 
     enableGame() {
         // Re-enable all panels
         for (let i = 0; i <= 9; i++) {
-            this.panels[i].style.pointerEvents = 'auto';
+            if (this.panels[i] && this.panels[i].style) {
+                this.panels[i].style.pointerEvents = 'auto';
+            }
         }
 
         // Show connection lines again
         const svg = document.getElementById('connections');
-        if (svg) {
+        if (svg && svg.style) {
             svg.style.display = 'block';
         }
 
         // Restore normal controls
         const controlsDiv = document.querySelector('.controls');
-        controlsDiv.innerHTML = `<button onclick="game.reset()">リセット</button>`;
-    }
-
-    reset() {
-        for (let i = 0; i <= 9; i++) {
-            // Set initial state: panels 1, 5, 9 are white, others are yellow
-            const isWhite = (i === 1 || i === 5 || i === 9);
-            this.panels[i].className = `panel panel-${i} ${isWhite ? 'white' : 'yellow'}`;
-            this.panels[i].textContent = '';
-            // Only set style properties if in browser environment
-            if (typeof window !== 'undefined') {
-                this.panels[i].style.pointerEvents = 'auto';
-            }
-        }
-        this.touchedNumbers = {};
-
-        // Show connection lines again (browser only)
-        if (typeof document !== 'undefined') {
-            const svg = document.getElementById('connections');
-            if (svg && svg.style) {
-                svg.style.display = 'block';
-            }
-
-            // Restore title to "Repair From Zero" with broken style
-            const titleElement = document.querySelector('.game-title');
-            if (titleElement) {
-                titleElement.textContent = 'Repair From Zero';
-                titleElement.className = 'game-title';
-            }
-
-            // Keep share button if victory screen exists (game was won)
-            const victoryScreen = document.querySelector('.victory-screen');
-            if (victoryScreen) {
-                const controlsDiv = document.querySelector('.controls');
-                if (controlsDiv) {
-                    controlsDiv.innerHTML = `
-                        <div class="victory-screen">
-                            <button onclick="game.reset()">リセット</button>
-                            <button onclick="window.open('https://x.com/intent/post?text=%23repair_from_zero+%E3%82%92%E3%82%AF%E3%83%AA%E3%82%A2%E3%81%97%E3%81%9F%EF%BC%81+%23%E3%82%AB%E3%82%BA%E3%83%AA%E3%83%83%E3%83%88%E5%AE%87%E5%AE%99%E8%AC%8E&url=https://kazushi0114.github.io/repair_from_zero/', '_blank')" class="reset-button">Xでシェア</button>
-                        </div>
-                    `;
-                }
-            }
+        if (controlsDiv) {
+            controlsDiv.innerHTML = `
+                <button class="empty-button"></button>
+                <button onclick="game.reset()">↩</button>
+                <button class="empty-button"></button>
+            `;
         }
     }
 }
