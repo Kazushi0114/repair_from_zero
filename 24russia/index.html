@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>重心計算シミュレーター</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding: 20px;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        #simulator-svg {
+            border: 1px solid #ccc;
+            border-radius: 50%;
+            background-color: #fff;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .cup {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .cup-label {
+            font-size: 14px;
+            font-weight: bold;
+            fill: #555;
+            pointer-events: none; /* Make text unclickable */
+            user-select: none; /* Make text unselectable */
+        }
+        .cup-empty { fill: #d0d0d0; }
+        .cup-selected { fill: #007bff; stroke: #0056b3; stroke-width: 2px; }
+        .cup-canceling { fill: #28a745; stroke: #1e7e34; stroke-width: 2px; }
+        
+        #com-marker {
+            stroke: #dc3545;
+            stroke-width: 4;
+            transition: all 0.3s ease-in-out;
+        }
+        .controls, .results {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            width: 350px;
+        }
+        h2, h3 {
+            margin-top: 0;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 5px;
+        }
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+        }
+        .checkbox-grid label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+        }
+        .results p {
+            font-size: 1.1em;
+            margin: 10px 0;
+        }
+        .results span {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .symmetries {
+            font-size: 0.9em;
+            color: #28a745;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>重心計算シミュレーター ⚖️</h2>
+        <svg id="simulator-svg" width="400" height="400"></svg>
+    </div>
+
+    <div>
+        <div class="controls">
+            <h3>コントロールパネル</h3>
+            <p>コップをクリックするか、下のチェックボックスで水を入れる場所を選んでください。</p>
+            <div id="checkbox-container" class="checkbox-grid"></div>
+        </div>
+        <br>
+        <div class="results">
+            <h3>計算結果</h3>
+            <p>方向: <span id="result-direction">-</span></p>
+            <p>中心からの距離: <span id="result-distance">-</span></p>
+            <p class="symmetries" id="result-symmetries"></p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const NUM_CUPS = 24;
+            const SVG_SIZE = 400;
+            const CENTER = SVG_SIZE / 2;
+            const RADIUS = 150;
+            const CUP_RADIUS = 12;
+
+            const svg = document.getElementById('simulator-svg');
+            const checkboxContainer = document.getElementById('checkbox-container');
+            const resultDir = document.getElementById('result-direction');
+            const resultDist = document.getElementById('result-distance');
+            const resultSym = document.getElementById('result-symmetries');
+
+            let selectedCups = new Set();
+            const cupElements = [];
+
+            // 初期化：円とチェックボックスを生成
+            for (let i = 1; i <= NUM_CUPS; i++) {
+                const angleRad = -i * (360 / NUM_CUPS) * (Math.PI / 180);
+
+                const cx = CENTER + RADIUS * Math.cos(angleRad);
+                const cy = CENTER - RADIUS * Math.sin(angleRad); // SVGのY軸は下向きなので反転
+
+                // SVG内に円（コップ）を作成
+                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                circle.setAttribute("cx", cx);
+                circle.setAttribute("cy", cy);
+                circle.setAttribute("r", CUP_RADIUS);
+                circle.setAttribute("class", "cup cup-empty");
+                circle.dataset.id = i;
+                svg.appendChild(circle);
+                
+                // SVG内に番号ラベルを作成
+                const labelCx = CENTER + (RADIUS + 28) * Math.cos(angleRad);
+                const labelCy = CENTER - (RADIUS + 28) * Math.sin(angleRad);
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", labelCx);
+                text.setAttribute("y", labelCy);
+                text.setAttribute("dy", "0.35em"); // vertically center
+                text.setAttribute("text-anchor", "middle");
+                text.setAttribute("class", "cup-label");
+                text.textContent = i;
+                svg.appendChild(text);
+
+                cupElements[i] = circle;
+
+                // チェックボックスを作成
+                const label = document.createElement('label');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = i;
+                checkbox.id = `cup-${i}`;
+                
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(i));
+                checkboxContainer.appendChild(label);
+
+                // イベントリスナー
+                circle.addEventListener('click', () => toggleCup(i));
+                checkbox.addEventListener('change', () => toggleCup(i, checkbox.checked));
+            }
+
+            // 重心マーカーを作成
+            const comMarker = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            comMarker.setAttribute("id", "com-marker");
+            comMarker.setAttribute("d", "M -10 0 L 10 0 M 0 -10 L 0 10"); // 十字の形
+            comMarker.style.visibility = 'hidden';
+            svg.appendChild(comMarker);
+
+            function toggleCup(id, forceState = null) {
+                const checkbox = document.getElementById(`cup-${id}`);
+                const isSelected = forceState !== null ? forceState : !selectedCups.has(id);
+
+                if (isSelected) {
+                    selectedCups.add(id);
+                } else {
+                    selectedCups.delete(id);
+                }
+                checkbox.checked = isSelected;
+                
+                updateAndCalculate();
+            }
+
+            function updateAndCalculate() {
+                const cupsToCalculate = new Set(selectedCups);
+                const cancelingPairs = [];
+
+                // 対称なペアを探して計算から除外
+                for (const cup of selectedCups) {
+                    const opposite = (cup + NUM_CUPS / 2 -1) % NUM_CUPS + 1;
+                    if (cupsToCalculate.has(cup) && cupsToCalculate.has(opposite)) {
+                        cancelingPairs.push([cup, opposite]);
+                        cupsToCalculate.delete(cup);
+                        cupsToCalculate.delete(opposite);
+                    }
+                }
+                
+                // UIの更新
+                cupElements.forEach((circle, id) => {
+                    if (id > 0) circle.className.baseVal = "cup cup-empty";
+                });
+                selectedCups.forEach(id => {
+                    cupElements[id].className.baseVal = "cup cup-selected";
+                });
+                cancelingPairs.flat().forEach(id => {
+                    cupElements[id].className.baseVal = "cup cup-canceling";
+                });
+
+                // 重心計算
+                let sumX = 0, sumY = 0;
+                if (cupsToCalculate.size > 0) {
+                    cupsToCalculate.forEach(cupId => {
+                        const angleRad = -cupId * (360 / NUM_CUPS) * (Math.PI / 180);
+                        sumX += Math.cos(angleRad);
+                        sumY += Math.sin(angleRad);
+                    });
+                }
+                
+                // 打ち消し合うペアの重心も考慮する (同じ位置なので平均値でもOK)
+                if (cancelingPairs.length > 0) {
+                    cancelingPairs.forEach(pair => {
+                       const [c1, c2] = pair;
+                       const a1 = -c1 * (360 / NUM_CUPS) * (Math.PI / 180);
+                       const a2 = -c2 * (360 / NUM_CUPS) * (Math.PI / 180);
+                       sumX += (Math.cos(a1) + Math.cos(a2)); // Should be ~0
+                       sumY += (Math.sin(a1) + Math.sin(a2)); // Should be ~0
+                    });
+                }
+
+                if (selectedCups.size === 0) {
+                    comMarker.style.visibility = 'hidden';
+                    resultDir.textContent = '-';
+                    resultDist.textContent = '-';
+                    resultSym.textContent = '';
+                    return;
+                }
+
+                const avgX = sumX / selectedCups.size;
+                const avgY = sumY / selectedCups.size;
+
+                const comX = CENTER + avgX * RADIUS;
+                const comY = CENTER - avgY * RADIUS;
+
+                comMarker.setAttribute("transform", `translate(${comX}, ${comY})`);
+                comMarker.style.visibility = 'visible';
+
+                // 結果表示
+                const distance = Math.sqrt(avgX**2 + avgY**2);
+                resultDist.textContent = `半径の ${ (distance * 100).toFixed(1) }%`;
+
+                const angleDeg = Math.atan2(avgY, avgX) * (180 / Math.PI);
+                let cupDirection = -angleDeg / 15;
+                if (cupDirection < 0) cupDirection += 24;
+                if(cupDirection.toFixed(2) == 0.00) cupDirection = 24.00; // 0番を24番と表示
+
+                resultDir.textContent = `${cupDirection.toFixed(2)} 番の方向`;
+                
+                if (cancelingPairs.length > 0) {
+                    resultSym.textContent = "発見された対称ペア: " + cancelingPairs.map(p => `(${p[0]},${p[1]})`).join(' ');
+                } else {
+                    resultSym.textContent = '';
+                }
+            }
+        });
+    </script>
+</body>
+</html>
